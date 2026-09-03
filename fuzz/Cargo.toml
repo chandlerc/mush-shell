@@ -1,0 +1,75 @@
+# Part of the Mush project, under the Apache License v2.0 with LLVM
+# Exceptions. See /LICENSE for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+[package]
+name = "mush-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "Apache-2.0 WITH LLVM-exception"
+
+[package.metadata]
+cargo-fuzz = true
+
+# Its own workspace: the targets need nightly (libFuzzer's sanitizer
+# instrumentation), and `cargo build --workspace` at the repo root must
+# stay a stable-toolchain build. It reaches quinn only through the
+# `mush-core` path dependency below, which inherits the root workspace's
+# git-pinned entry across the boundary, so the revision is stated once
+# and this lockfile resolves to the same tree. The root Cargo.toml has
+# what that pin is for.
+[workspace]
+
+[dependencies]
+arbitrary = { version = "1", features = ["derive"] }
+libfuzzer-sys = "0.4"
+# `fuzzing` adds the constructors that make a run reproducible: a probe
+# whose transaction id comes from the input rather than the system random
+# source (`stun_probe`, `helper_service`).
+mush-core = { path = "../crates/mush-core", features = ["fuzzing"] }
+# The line-framing target drives an async `LineChannel` over a chunked
+# reader, so it needs a runtime to block on.
+tokio = { version = "1", features = ["io-util", "rt", "sync", "time"] }
+
+[[bin]]
+name = "bootstrap_lines"
+path = "fuzz_targets/bootstrap_lines.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "connect_scanner"
+path = "fuzz_targets/connect_scanner.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "line_channel"
+path = "fuzz_targets/line_channel.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "line_channel_send"
+path = "fuzz_targets/line_channel_send.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "stun_probe"
+path = "fuzz_targets/stun_probe.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "helper_service"
+path = "fuzz_targets/helper_service.rs"
+test = false
+doc = false
+bench = false

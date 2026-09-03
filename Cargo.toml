@@ -1,0 +1,115 @@
+# Part of the Mush project, under the Apache License v2.0 with LLVM
+# Exceptions. See /LICENSE for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0 WITH LLVM-exception"
+repository = "https://github.com/chandlerc/mush-shell"
+
+[workspace.dependencies]
+anyhow = "1"
+bytes = "1"
+clap = { version = "4", features = ["derive", "env"] }
+# Hard-pinned: patchbay is young and fast-moving; the lab harness is
+# validated against exactly this version. Bump deliberately, never via
+# semver drift.
+patchbay = "=0.7.0"
+# quinn main plus quinn-rs/quinn#2814, pinned by revision. One entry
+# supplies all three crates: `quinn` reaches `quinn-proto` and `quinn-udp`
+# by path inside that checkout, so the revision pins the async wrapper,
+# the state machine and the socket layer together -- here and in `fuzz/`,
+# which is its own workspace and inherits this entry through `mush-core`.
+#
+# Pinned at all because the deterministic simulator's reproducibility
+# depends on quinn internals (timer scheduling, FxHashMap iteration order)
+# staying fixed, and those are quinn-proto's: the state machine, timers,
+# congestion control and stream reassembler all live there.
+#
+# Pinned to a revision because two constraints leave nothing in the
+# registry between them:
+#
+# - The minimum version. quinn-proto 0.11.17 is the only release carrying
+#   the fixes for GHSA-qfwj-vfxf-92j2, GHSA-2hv7-gw8g-gpq5 and
+#   GHSA-hmxj-32vh-65vr, remote memory-exhaustion advisories naming every
+#   earlier 0.11.x as affected. Mush terminates untrusted network input on
+#   every endpoint, and the first is reachable pre-handshake through the
+#   CRYPTO assembler by anyone who can send a datagram to a server or a
+#   jump helper.
+#
+# - The upper bound. 0.11.17 bounds its receive assembler on the
+#   buffered-chunk count as well as on over-allocation, but its
+#   `defragment` re-pushes chunks it has already flagged defragmented
+#   instead of merging them with their neighbours, so on contiguous data
+#   the count cannot fall: more than 2048 unread STREAM frames kill the
+#   connection with INTERNAL_ERROR("too many gaps in stream buffer") with
+#   no gaps anywhere. A relay whose local sink stalls -- the design's own
+#   backpressure -- reaches that under 3MB into an ordinary bulk
+#   transfer, killing a session on a healthy path.
+#   `crates/mush-core/tests/relay_netsim.rs` is that shape end to end.
+#
+# #2814 coalesces contiguous runs in `defragment`, merging chunks below
+# `buffered / MAX_CHUNKS`, so the count is bounded by construction while
+# large chunks stay zero-copy. It is unmerged, so quinn's own main
+# truncates too, and the newest releases on crates.io are quinn 0.11.11
+# and quinn-proto 0.11.17 with no 0.12 either way: main plus exactly that
+# commit is the only tree both current and fixed. It lives on the author's
+# fork, so a checkout without a populated cargo cache needs that host
+# reachable. By revision and never by branch: a branch is not a build
+# input, and this one moves under a rebase or a force-push.
+#
+# The cost: a git-sourced package's lockfile entry has no
+# `source = "registry+..."` and no `checksum`, the fields cargo-audit,
+# cargo-deny and GitHub's dependency graph match RustSec advisories on, so
+# nothing will flag the next quinn-proto advisory and a bump means reading
+# quinn's advisories page by hand. `cargo package` refuses a git dependency
+# outright, which is what the `publish = false` in the two publishable
+# crates records. Neither the revision nor the minimum version is enforced
+# by this entry alone -- it is one edit from naming a branch, or a release
+# below the minimum -- so `crates/mush-core/tests/quinn_provenance.rs`
+# asserts both, against both lockfiles.
+#
+# TODO: return this to a plain version requirement, and drop those two
+# `publish = false` lines, once a release carries the coalescing fix --
+# an 0.11.x backport, or 0.12 shipping with #2814 merged (upstream issue
+# quinn-rs/quinn#2809) -- and re-run `relay_netsim` against it to
+# confirm. The minimum version still applies once the git source is gone:
+# a release below 0.11.17 restores all three advisories.
+quinn = { git = "https://github.com/lyons-e/quinn.git", rev = "8fec33d99621262ea9c43f8de55131f37e27013f" }
+rand = "0.9"
+rustls = "0.23"
+tempfile = "3"
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[workspace.lints.clippy]
+uninlined_format_args = "deny"
+
+# The release profile is a distribution profile: Mush ships as one static
+# binary that gets scp'd onto servers and bastions, so build time is worth
+# trading for size and for the relay's steady-state throughput. The x86_64
+# musl `mush` measures 9.6 MiB on the default profile, 8.4 MiB with thin
+# LTO, and 8.0 MiB here, for 17s / 22s / 34s of clean build.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+# panic stays "unwind", against the usual choice for a shipped binary. The
+# client keeps the stall prober and the relay-to-direct upgrade running as
+# detached tasks alongside the relay, and the destination keeps its own
+# upgrade task; none of their join handles is ever awaited, and the relay
+# loop already treats an upgrade task ending as a normal event. Under
+# unwind a bug in one of those costs the session its roaming recovery or
+# its path upgrade; under abort it costs the user a live ssh session, the
+# one thing Mush exists to keep. Aborting would save 709 KiB, which is
+# not worth that. Unwinding is not required anywhere else: nothing
+# catches a panic, and the detach forks before any runtime exists.
+#
+# Symbols are likewise kept (`strip` would save a further 1.0 MiB): a panic
+# on a remote host that detached its stderr to /dev/null is hard enough to
+# diagnose with a symbolized backtrace.

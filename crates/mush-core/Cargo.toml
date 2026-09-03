@@ -1,0 +1,147 @@
+# Part of the Mush project, under the Apache License v2.0 with LLVM
+# Exceptions. See /LICENSE for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+[package]
+name = "mush-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Bootstrap protocol, key pinning, transport policy, relay, and session engines for Mush"
+# `cargo package` refuses a dependency with no version requirement, and
+# quinn comes from a git revision, so this crate cannot be published at
+# all. That goes away with the pin; the root Cargo.toml has why the pin
+# exists and what retires it.
+publish = false
+
+# Constructors that exist only so a libFuzzer run is a function of its
+# input (`BindingTransaction::seeded`). Enabled by `fuzz/` and never by
+# the shipped build, so a probe's transaction id stays unguessable in
+# everything that ships.
+[features]
+fuzzing = []
+
+[dependencies]
+# Key generation and SHA-256 for the session identity. Already in the tree
+# as rustls's default crypto provider; used directly only because rustls
+# exposes no keygen API.
+aws-lc-rs = "1"
+base64 = "0.22"
+quinn = { workspace = true }
+rustls = { workspace = true }
+# The traversal probe format (src/stun.rs): binding requests, their
+# success responses, and the short-term-credential MESSAGE-INTEGRITY the
+# jump helper checks. Off the shelf rather than invented, per the design
+# doc's "Reuse versus build", which also rules out an ICE stack entirely.
+# Chosen over `stun_codec` (RFC 5389-era, and its bytecodec/trackable
+# framework gives nothing for three message shapes) and `stun-rs` (also RFC
+# 8489, but its long-term credentials pull in stringprep, which Mush has
+# no use for): this one is RFC 8489 first-class, sans-IO, and carries no
+# ICE surface to grow into. Not free -- around a dozen crates enter the
+# tree through it (byteorder, crc, the RustCrypto hmac/digest/sha1/sha2/md-5
+# stack and its supporting crates), of which only rand and smallvec overlap
+# what Mush already had, and the integrity machinery among them is what
+# signs the probes.
+stun-types = "2"
+subtle = "2"
+thiserror = "2"
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+# Interface enumeration (`getifaddrs`, src/server.rs), which rustix does
+# not wrap, and the `RTM_*`/`RTMGRP_*` constants the netlink monitor
+# classifies on; see their docs for why neither pulls a crate stack.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# The listen-only netlink monitor's socket (src/netlink.rs). Already in
+# the shipped binary through `mush`, so it costs no new code and lets the
+# monitor open and read its socket with no `unsafe` of its own.
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { version = "1", features = ["net"] }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+# Benchmarks only. Default features minus rayon and plotters: the bench
+# runs are wired for `--noplot`, and criterion's parallelism adds timing
+# variation on a machine also running the workload under test.
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+# The netsim-tier establishment tests host the engines' endpoints on the
+# simulated network; virtual time there needs tokio's test-util.
+mush-netsim = { path = "../mush-netsim" }
+rand = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true
+
+# Only the criterion targets below participate in `cargo bench`; the
+# libtest harness on the lib and integration tests would otherwise
+# reject criterion CLI flags such as `--noplot`.
+[lib]
+bench = false
+
+[[test]]
+name = "establish"
+bench = false
+
+[[test]]
+name = "establish_netsim"
+bench = false
+
+[[test]]
+name = "handshake"
+bench = false
+
+[[test]]
+name = "recovery_netsim"
+bench = false
+
+[[test]]
+name = "hostile_netsim"
+bench = false
+
+[[test]]
+name = "hostile_diag"
+bench = false
+
+[[test]]
+name = "hostile_candidates"
+bench = false
+
+[[test]]
+name = "hostile_netlink"
+bench = false
+
+[[test]]
+name = "relay"
+bench = false
+
+[[test]]
+name = "relay_netsim"
+bench = false
+
+[[test]]
+name = "signaling"
+bench = false
+
+[[test]]
+name = "helper_netsim"
+bench = false
+
+[[test]]
+name = "punch_netsim"
+bench = false
+
+[[test]]
+name = "quinn_provenance"
+bench = false
+
+[[bench]]
+name = "relay"
+harness = false
+
+[[bench]]
+name = "bootstrap"
+harness = false

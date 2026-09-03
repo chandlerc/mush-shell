@@ -54,3 +54,6 @@ repos:
         entry: rustfmt
         language: system
         types: [rust]
+
+# Lockfiles are generated, and fuzz seeds are test input byte for byte.
+exclude: ^(Cargo\.lock|fuzz/Cargo\.lock|fuzz/seeds/.*)$

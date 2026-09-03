@@ -3,3 +3,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 /target
+# libFuzzer writes a log per worker into the directory it runs in.
+/fuzz-*.log

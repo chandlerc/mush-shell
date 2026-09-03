@@ -1,0 +1,61 @@
+# Part of the Mush project, under the Apache License v2.0 with LLVM
+# Exceptions. See /LICENSE for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# Fuzzing dictionary for the line protocols and the probe format.
+# Pass it with `-dict=fuzz/mush.dict`; the line parsers need the exact
+# prefixes and key names before they get past their first branch.
+
+# Message prefixes.
+"MUSH HELLO"
+"MUSH CONNECT"
+"MUSH CANDIDATE"
+"MUSH HELPER"
+"MUSH PUNCH"
+"MUSH DONE"
+"MUSH SERVE"
+"MUSH READY"
+"MUSH PEER"
+"MUSH CLOSE"
+
+# Keys, with the separator, as they appear on the wire.
+"v=1"
+" key="
+" target="
+" port="
+" nonce="
+" secret="
+" addr="
+" kind="
+" prio="
+" round="
+" role="
+" client="
+
+# Values the parsers accept.
+"direct"
+"reflexive"
+"relayed"
+"client"
+"destination"
+
+# Line shapes. libFuzzer's dictionary parser takes only \xNN escapes.
+"\x0a"
+"\x0d\x0a"
+" "
+
+# Encoded values of the right length: a 43-character key pin, a
+# 22-character nonce or secret, and addresses of both families.
+"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+"AAAAAAAAAAAAAAAAAAAAAA"
+"192.0.2.10:60123"
+"[2001:db8::1]:60123"
+
+# STUN: the magic cookie, a bare binding request header, and the
+# attribute types the probes carry.
+"\x21\x12\xa4\x42"
+"\x00\x01\x00\x00\x21\x12\xa4\x42"
+"\x01\x01"
+"\x00\x06"
+"\x00\x1c"
+"\x00\x20"
