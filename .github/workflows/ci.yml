@@ -103,3 +103,77 @@ jobs:
           name: fuzz-artifacts
           path: fuzz/artifacts/
           if-no-files-found: ignore
+
+  release:
+    # Builds the shipping binary as README.md's install instructions do: the
+    # release profile, statically linked against musl.
+    # TODO: Once Mush is ready for releases, publish this binary as a GitHub
+    # release when every job passes.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          # TODO: Switch to `block` with an `allowed-endpoints` list once the
+          # first runs have recorded the endpoints this job uses.
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # aws-lc-sys and ring compile C in their build scripts.
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools
+      - run: cargo build --locked --release --target x86_64-unknown-linux-musl -p mush
+      - name: Check that the binary is static and runs
+        run: |
+          bin=target/x86_64-unknown-linux-musl/release/mush
+          file "$bin" | grep -F 'static'
+          "$bin" --version
+
+  lab:
+    # The AppArmor user namespace sysctl below is specific to this Ubuntu
+    # release, so the image is pinned.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          # TODO: Switch to `block` with an `allowed-endpoints` list once the
+          # first runs have recorded the endpoints this job uses.
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
+        with:
+          tool: cargo-nextest
+      - name: Set up the lab
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          sudo apt-get update
+          # rsync and git are for the compatibility tests, which skip
+          # without them.
+          sudo apt-get install -y --no-install-recommends openssh-server nftables conntrack rsync git
+          # Module autoloading is unreliable inside a user namespace, so load
+          # what the lab needs up front: netem for link conditions, and
+          # ctnetlink for the NAT-rebind tests' conntrack flush.
+          sudo modprobe -a sch_netem nf_conntrack_netlink
+      # The lab tests run the `mush` binary, which building the tests does not
+      # produce.
+      - run: cargo build --locked -p mush
+      - name: Run the lab suite
+        run: |
+          set -o pipefail
+          cargo nextest run --locked --profile lab -p mush-lab 2>&1 | tee lab.log
+      - name: Fail if any lab test skipped
+        run: |
+          if grep -F MUSH-LAB-SKIP lab.log; then
+            echo 'Lab tests skipped; CI must run all of them.' >&2
+            exit 1
+          fi

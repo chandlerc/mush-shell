@@ -1,0 +1,47 @@
+# Part of the Mush project, under the Apache License v2.0 with LLVM
+# Exceptions. See /LICENSE for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+[package]
+name = "mush"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A roaming, resumable QUIC transport for unmodified OpenSSH"
+# `cargo package` refuses a dependency with no version requirement, and
+# quinn comes from a git revision, so this crate cannot be published at
+# all. Goes away with that pin; the root Cargo.toml has what the pin is
+# for and what retires it.
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+# fork() for the detach, SIGHUP disposition, and the bootstrap alarm:
+# none of them exposed by rustix.
+libc = "0.2"
+mush-core = { path = "../mush-core" }
+quinn = { workspace = true }
+rustix = { version = "1", features = [
+  "event",
+  "fs",
+  "net",
+  "pipe",
+  "process",
+  "stdio",
+] }
+tokio = { workspace = true, features = ["process", "signal"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
+libc = "0.2"
+mush-core = { path = "../mush-core" }
+quinn = { workspace = true }
+tempfile.workspace = true
+tokio = { workspace = true, features = ["process"] }
+
+[lints]
+workspace = true

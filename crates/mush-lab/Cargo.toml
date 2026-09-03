@@ -1,0 +1,35 @@
+# Part of the Mush project, under the Apache License v2.0 with LLVM
+# Exceptions. See /LICENSE for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+[package]
+name = "mush-lab"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Tests that run real OpenSSH over Mush in a rootless network lab"
+publish = false
+
+[dependencies]
+
+[dev-dependencies]
+anyhow.workspace = true
+# Required by the userns_bootstrap!() expansion.
+ctor = "1"
+# The loopback-tier prober test (tests/prober.rs) drives the library
+# engines directly over real sockets; no lab needed.
+mush-core = { path = "../mush-core" }
+mush-testenv = { path = "../mush-testenv" }
+# The perf harness's machine-readable results file (tests/perf.rs).
+# Already in the tree via patchbay, and a hand-rolled writer has no
+# token for the `NaN` an empty rep count leaves in every percentile.
+serde_json = "1"
+tempfile.workspace = true
+tokio = { workspace = true, features = ["process"] }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+libc = "0.2"
+
+[lints]
+workspace = true

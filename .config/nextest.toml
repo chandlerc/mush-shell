@@ -1,0 +1,49 @@
+# Part of the Mush project, under the Apache License v2.0 with LLVM
+# Exceptions. See /LICENSE for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# The lab suite (mush-lab) needs user namespaces, nftables, and real
+# OpenSSH, so it is excluded from plain `cargo nextest run` and runs under
+# its own profile: `cargo nextest run --profile lab`. See docs/testing.md.
+
+[profile.default]
+default-filter = "not package(mush-lab)"
+
+[profile.lab]
+# The perf comparison (tests/perf.rs) is a manual measurement run, never
+# part of the lab suite; it has its own profile below.
+default-filter = "package(mush-lab) and not binary(perf)"
+# Concurrent labs are safe (namespaces are fully isolated); keep nextest's
+# default parallelism. Show passing tests' output so the skip marker
+# (MUSH-LAB-SKIP) is visible in logs; CI greps for it.
+success-output = "final"
+# The slowest non-overridden tests (the compat matrix's 10s-blackhole
+# windows) finish in roughly 25s under full-suite contention; anything that
+# reaches a minute is stuck (nextest's default slow-timeout only warns),
+# so terminate it and fail attributably instead of hanging the run.
+slow-timeout = { period = "60s", terminate-after = 2 }
+
+[[profile.lab.overrides]]
+# The long-window resilience tests sleep through blackholes and timeout
+# windows that must outlast quinn's default 30s idle timeout (or a 30s
+# --idle-timeout/--retain limit plus detection slack) by design; give
+# them their own generous timeout instead of inflating the profile
+# default. The longest, the 70s-outage test, runs about 90 seconds. The
+# upgrade suite belongs here too: a relayed session's recovery from a
+# roam waits out stall detection and the bastion's own timeout, which
+# together run about 45 seconds.
+filter = "test(outage_) or test(sigkill_) or test(roam_) or binary(upgrade)"
+slow-timeout = { period = "120s", terminate-after = 2 }
+
+[profile.perf]
+# The S2 performance comparison (Mush vs raw ssh), run manually and only
+# on demand: `cargo nextest run --profile perf --cargo-profile release
+# -p mush-lab --no-capture` (the test refuses debug builds). Never part
+# of the default or lab profiles and never run in CI; see
+# docs/testing.md. One test at a time -- concurrent measurement would
+# invalidate the numbers -- and no terminate-after: a full run takes tens
+# of minutes by design (loss-bound transfers, outage windows).
+default-filter = "package(mush-lab) and binary(perf)"
+test-threads = 1
+success-output = "final"
+slow-timeout = { period = "600s" }

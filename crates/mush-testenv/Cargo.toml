@@ -1,0 +1,25 @@
+# Part of the Mush project, under the Apache License v2.0 with LLVM
+# Exceptions. See /LICENSE for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+[package]
+name = "mush-testenv"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Rootless network-namespace harness for Mush's lab tests"
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["process"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ctor = "1"
+libc = "0.2"
+patchbay.workspace = true
+
+[lints]
+workspace = true
