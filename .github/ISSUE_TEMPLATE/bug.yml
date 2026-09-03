@@ -1,0 +1,44 @@
+# Part of the Mush project, under the Apache License v2.0 with LLVM
+# Exceptions. See /LICENSE for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+name: Bug
+description: Report a bug in Mush.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Report security vulnerabilities as described in the [security
+        policy](https://github.com/chandlerc/mush-shell/blob/trunk/SECURITY.md),
+        not here.
+  - type: textarea
+    id: desc
+    attributes:
+      label: What happened?
+  - type: textarea
+    id: repro
+    attributes:
+      label: How can it be reproduced?
+      description: >
+        Include the ssh_config or command line. If it depends on the network,
+        describe it: NAT on either end, a jump host and whether it runs the
+        helper, whether the client roamed or went offline.
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: >
+        If ssh behaves differently over Mush, say what the same command does
+        without it.
+  - type: textarea
+    id: version
+    attributes:
+      label: Versions
+      description: >
+        The Mush revision and the `ssh -V` output on both ends, plus each end's
+        operating system if they differ.
+  - type: textarea
+    id: extras
+    attributes:
+      label: Logs and other details

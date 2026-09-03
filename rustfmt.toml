@@ -1,0 +1,9 @@
+# Part of the Mush project, under the Apache License v2.0 with LLVM
+# Exceptions. See /LICENSE for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# LLVM-style 80 columns and two-space indents, using only stable options.
+# The edition lets `rustfmt` run on files directly, as the prek hook does.
+edition = "2024"
+max_width = 80
+tab_spaces = 2

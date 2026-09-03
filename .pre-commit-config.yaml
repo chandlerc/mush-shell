@@ -1,0 +1,56 @@
+# Part of the Mush project, under the Apache License v2.0 with LLVM
+# Exceptions. See /LICENSE for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# Run with `prek run -a` (https://github.com/j178/prek). Update versions with:
+#   prek autoupdate --freeze && prek run -a
+
+repos:
+  - repo: builtin
+    hooks:
+      - id: check-added-large-files
+      - id: check-case-conflict
+      - id: check-executables-have-shebangs
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: check-yaml
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+      - id: trailing-whitespace
+
+  - repo: https://github.com/rvben/rumdl-pre-commit
+    rev: 3429bee0c8870bff7874f898c6e8659d1ffe9645 # frozen: v0.2.79
+    hooks:
+      - id: rumdl
+        args: [--fix]
+
+  - repo: https://github.com/google/pre-commit-tool-hooks
+    rev: efaea7c61c774c0b1a9805fd999e754a2d19dbd1 # frozen: v1.2.5
+    hooks:
+      - id: markdown-toc
+      - id: check-copyright
+        args:
+          - --copyright
+          - |+
+            Part of the Mush project, under the Apache License v2.0 with LLVM
+            Exceptions. See /LICENSE for license information.
+            SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+          # Rust has no built-in format; other files here use the `#`
+          # default or the built-in Markdown one.
+          - --custom_format
+          - '\.rs$'
+          - ''
+          - '// '
+          - ''
+
+  # Formatters run last so they can reformat changes from the hooks above.
+  # rustfmt comes from PATH; in CI, from the runner image.
+  - repo: local
+    hooks:
+      - id: rustfmt
+        name: rustfmt
+        entry: rustfmt
+        language: system
+        types: [rust]
