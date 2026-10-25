@@ -60,8 +60,9 @@ details.
     still the component most likely to hurt you.
 -   Only the author has tested the threat model.
 -   The command line and wire protocol will change without notice.
--   Linux is the only tested platform. Other Unix systems should build but react
-    more slowly to network changes. Windows is unsupported.
+-   Only Linux is tested on real networks; CI also runs the other tests on
+    macOS. On systems other than Linux, Mush reacts more slowly to network
+    changes. Other Unix systems should build. Windows is unsupported.
 -   IPv6 is incomplete: sessions to IPv6-only destinations fall back to TCP.
 -   There are no packages, and the UDP port range is fixed.
 
@@ -74,22 +75,23 @@ not that it is safe. Security review is what the project needs most; see
 
 ## Install
 
-There are no prebuilt binaries. Build a static binary with:
+There are no prebuilt binaries. On Linux, build a static binary with:
 
 ```sh
 rustup target add x86_64-unknown-linux-musl
 cargo build --release --target x86_64-unknown-linux-musl -p mush
 ```
 
-This needs a C compiler that targets musl: `musl-tools` on Debian and Ubuntu,
-`musl` on Arch. Without one, the build fails with
-`failed to find tool "x86_64-linux-musl-gcc"`. The binary runs on other
-machines, so do not build it with `-C target-cpu=native`.
+On 64-bit Arm, substitute `aarch64` for `x86_64`. This needs a C compiler that
+targets musl: `musl-tools` on Debian and Ubuntu, `musl` on Arch. Without one,
+the build fails with `failed to find tool "x86_64-linux-musl-gcc"`. The binary
+runs on other machines, so do not build it with `-C target-cpu=native`.
 
-The result is an 8 MiB executable with no runtime dependencies. Copy it to the
-client, to each destination, and to each bastion that should help with
-traversal. If `mush` is not on a remote host's non-interactive `PATH`, pass its
-location with `--server '/opt/mush/mush server bootstrap'` or
+The result is an 8 MiB executable with no runtime dependencies. On macOS,
+`cargo build --release -p mush` builds one that depends only on the system
+libraries. Copy it to the client, to each destination, and to each bastion that
+should help with traversal. If `mush` is not on a remote host's non-interactive
+`PATH`, pass its location with `--server '/opt/mush/mush server bootstrap'` or
 `--helper '/opt/mush/mush jump-helper'`.
 
 ## Use

@@ -27,12 +27,18 @@ jobs:
       - uses: j178/prek-action@1382ad72dea72f9d53832f2bcb65b3e87a947204 # v3.0.1
 
   clippy:
-    runs-on: ubuntu-latest
+    # The code's `cfg`s depend only on the OS.
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-26.04, macos-26]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           # TODO: Switch to `block` with an `allowed-endpoints` list once the
-          # first runs have recorded the endpoints this job uses.
+          # first runs have recorded the endpoints this job uses. macOS
+          # supports only `audit`.
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -42,12 +48,19 @@ jobs:
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
   test:
-    runs-on: ubuntu-latest
+    # The current Ubuntu LTS and macOS releases. Mush does not support
+    # Windows.
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-26.04, ubuntu-26.04-arm, macos-26]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           # TODO: Switch to `block` with an `allowed-endpoints` list once the
-          # first runs have recorded the endpoints this job uses.
+          # first runs have recorded the endpoints this job uses. macOS
+          # supports only `audit`.
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -107,39 +120,61 @@ jobs:
           if-no-files-found: ignore
 
   release:
-    # Builds the shipping binary as README.md's install instructions do: the
-    # release profile, statically linked against musl.
-    # TODO: Once Mush is ready for releases, publish this binary as a GitHub
-    # release when every job passes.
-    runs-on: ubuntu-latest
+    # Builds the shipping binaries as README.md's install instructions do:
+    # the release profile, statically linked against musl on Linux.
+    # TODO: Once Mush is ready for releases, publish these binaries as a
+    # GitHub release when every job passes.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-26.04
+            target: x86_64-unknown-linux-musl
+          - runner: ubuntu-26.04-arm
+            target: aarch64-unknown-linux-musl
+          - runner: macos-26
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           # TODO: Switch to `block` with an `allowed-endpoints` list once the
-          # first runs have recorded the endpoints this job uses.
+          # first runs have recorded the endpoints this job uses. macOS
+          # supports only `audit`.
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: |
-          rustup toolchain install stable --profile minimal
-          rustup target add x86_64-unknown-linux-musl
+      - run: rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       # aws-lc-sys and ring compile C in their build scripts.
-      - run: |
+      - if: runner.os == 'Linux'
+        run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends musl-tools
-      - run: cargo build --locked --release --target x86_64-unknown-linux-musl -p mush
-      - name: Check that the binary is static and runs
+      - run: cargo build --locked --release --target ${{ matrix.target }} -p mush
+      - name: Check the binary's linkage, and that it runs
         run: |
-          bin=target/x86_64-unknown-linux-musl/release/mush
-          file "$bin" | grep -F 'static'
+          bin=target/${{ matrix.target }}/release/mush
+          if [ "$RUNNER_OS" = Linux ]; then
+            file "$bin" | grep -F 'static'
+          else
+            otool -L "$bin"
+            if otool -L "$bin" | tail -n +2 |
+              grep -v -E '^[[:space:]]+/(usr/lib|System/Library)/'; then
+              echo 'The binary links libraries that are not part of macOS.' >&2
+              exit 1
+            fi
+          fi
           "$bin" --version
 
   lab:
-    # The AppArmor user namespace sysctl below is specific to this Ubuntu
-    # release, so the image is pinned.
-    runs-on: ubuntu-24.04
+    # The AppArmor user namespace sysctl below is specific to Ubuntu.
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-26.04, ubuntu-26.04-arm]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     steps:
       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
