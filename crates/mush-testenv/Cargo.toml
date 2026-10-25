@@ -11,15 +11,13 @@ repository.workspace = true
 description = "Rootless network-namespace harness for Mush's lab tests"
 publish = false
 
-[dependencies]
-anyhow.workspace = true
-tempfile.workspace = true
-tokio = { workspace = true, features = ["process"] }
-
 [target.'cfg(target_os = "linux")'.dependencies]
+anyhow.workspace = true
 ctor = "1"
 libc = "0.2"
 patchbay.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["process"] }
 
 [lints]
 workspace = true
