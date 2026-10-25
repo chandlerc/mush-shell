@@ -101,7 +101,8 @@ macro_rules! userns_bootstrap {
   };
 }
 
-/// Removes host environment that lab processes would otherwise inherit.
+/// Removes host environment that lab processes would otherwise inherit,
+/// and gives the process a temporary directory of its own.
 ///
 /// Every ssh in a lab, including the `-J` hop and Mush's bootstrap ssh,
 /// consults the agent named by `SSH_AUTH_SOCK` even with `IdentitiesOnly`.
@@ -109,6 +110,14 @@ macro_rules! userns_bootstrap {
 /// slowly enough under a full suite's load to exceed the fixture's 5s
 /// `ConnectTimeout`. Tests that exercise an agent start their own and pass
 /// it explicitly.
+///
+/// patchbay keeps a lab's generated hosts files in a directory under the
+/// temporary directory, named by the process ID modulo 9999 and a count
+/// of the process's labs. Two test processes can draw the same name, and
+/// the first lab to drop deletes the directory under the other, whose
+/// next device then fails with "No such file or directory". A `TMPDIR`
+/// named by the whole process ID keeps each process's labs apart; it is
+/// removed at exit if the process left it empty.
 ///
 /// # Safety
 ///
@@ -118,6 +127,31 @@ macro_rules! userns_bootstrap {
 pub unsafe fn isolate_env() {
   // SAFETY: the caller guarantees no other thread exists.
   unsafe { std::env::remove_var("SSH_AUTH_SOCK") };
+  let dir =
+    std::env::temp_dir().join(format!("mush-lab-{}", std::process::id()));
+  if std::fs::create_dir_all(&dir).is_ok() && PROCESS_TEMP_DIR.set(dir).is_ok()
+  {
+    let dir = PROCESS_TEMP_DIR.get().expect("just set");
+    // SAFETY: as above.
+    unsafe { std::env::set_var("TMPDIR", dir) };
+    // SAFETY: the handler only reads a set `OnceLock` and removes a
+    // directory, both of which are sound during exit.
+    unsafe { libc::atexit(remove_process_temp_dir) };
+  }
+}
+
+/// The temporary directory [`isolate_env`] gave this process.
+#[cfg(target_os = "linux")]
+static PROCESS_TEMP_DIR: std::sync::OnceLock<std::path::PathBuf> =
+  std::sync::OnceLock::new();
+
+/// Removes [`PROCESS_TEMP_DIR`] if the process left it empty; anything
+/// still in it is a leak worth seeing.
+#[cfg(target_os = "linux")]
+extern "C" fn remove_process_temp_dir() {
+  if let Some(dir) = PROCESS_TEMP_DIR.get() {
+    let _ = std::fs::remove_dir(dir);
+  }
 }
 
 /// Skips the current test, visibly, when the harness cannot run here.
