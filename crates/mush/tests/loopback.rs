@@ -1218,6 +1218,9 @@ async fn retain_bounds_server_lifetime_after_client_death() -> Result<()> {
 /// client runs alongside the bootstrap and, unlike it, has nothing else
 /// that would end it. Both hang here as a real ssh with a live remote
 /// command does: stdin EOF ignored, running until killed.
+///
+/// Linux only, as PDEATHSIG is; see the design doc's open questions.
+#[cfg(target_os = "linux")]
 #[tokio::test]
 async fn signal_death_mid_bootstrap_reaps_every_ssh_it_spawned() -> Result<()> {
   let dir = tempfile::tempdir()?;

@@ -713,3 +713,8 @@ key updates and AEAD limits.
 -   No timer has a command-line option, and nobody has asked to vary one yet.
     The port range is the likeliest to be needed, since firewall rules name a
     range; Mosh has `-p` for this.
+-   Off Linux, a `mush connect` killed by a signal before its session starts,
+    as by the outer ssh's hangup at `ConnectTimeout`, leaves its ssh children
+    running until their remote commands end. Linux's parent-death signal kills
+    them. A watchdog process holding a pipe from `mush connect` could do the
+    same elsewhere.

@@ -1471,12 +1471,14 @@ fn keyword_value(option: &[u8], keyword: &[u8]) -> Option<String> {
 fn stdio_hangup(fd: RawFd) -> bool {
   use rustix::event::{PollFd, PollFlags, Timespec, poll};
 
-  // POLLRDHUP (Linux-only) additionally catches a socket peer that
-  // shut down just its write side.
+  // POLLHUP is reported unasked on Linux, but macOS's poll, built on
+  // kqueue, watches a descriptor only for events it was asked about.
+  // POLLRDHUP (Linux-only) additionally catches a socket peer that shut
+  // down just its write side.
   #[cfg(target_os = "linux")]
-  let extra = PollFlags::RDHUP;
+  let extra = PollFlags::HUP | PollFlags::RDHUP;
   #[cfg(not(target_os = "linux"))]
-  let extra = PollFlags::empty();
+  let extra = PollFlags::HUP;
   // The relay future owns the handle behind this descriptor until it is
   // dropped at return, so the fd outlives every poll.
   let fd = unsafe { std::os::fd::BorrowedFd::borrow_raw(fd) };
