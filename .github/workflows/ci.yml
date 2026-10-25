@@ -90,10 +90,12 @@ jobs:
           targets=$(cargo fuzz list --fuzz-dir fuzz)
           for target in $targets; do
             # libFuzzer writes new inputs into the first corpus directory.
-            # -max_len exceeds the 8 KiB line limit.
+            # -max_len exceeds the 8 KiB line limit. The prebuilt cargo-fuzz
+            # is a musl binary and builds for musl by default, which
+            # AddressSanitizer does not support, so --target picks glibc.
             mkdir -p "$RUNNER_TEMP/fuzz/$target"
-            cargo fuzz run --fuzz-dir fuzz "$target" \
-              "$RUNNER_TEMP/fuzz/$target" "fuzz/seeds/$target" \
+            cargo fuzz run --fuzz-dir fuzz --target x86_64-unknown-linux-gnu \
+              "$target" "$RUNNER_TEMP/fuzz/$target" "fuzz/seeds/$target" \
               -- -dict=fuzz/mush.dict -max_total_time=30 -max_len=65536 \
                  -print_final_stats=1
           done
