@@ -718,3 +718,32 @@ key updates and AEAD limits.
     running until their remote commands end. Linux's parent-death signal kills
     them. A watchdog process holding a pipe from `mush connect` could do the
     same elsewhere.
+-   Every destination, and every bastion that should help with traversal, needs
+    `mush` installed, built for its platform and speaking the client's protocol
+    version. The client could install it instead: write a POSIX sh script to a
+    remote `sh` that starts the host's `mush` if its `--version` reports that
+    protocol, and otherwise takes a copy from the client over the same channel
+    and keeps it in the host's XDG cache. The script would have to exchange
+    lines with the client in lockstep, so that no shell's input buffering reads
+    past it, which adds round trips before `MUSH HELLO`. A home shared over NFS
+    may hold a copy another host is running, a `noexec` home cannot run a copy
+    at all, and an `authorized_keys` forced command bypasses the script. What
+    runs on remote hosts would become another area of the security analysis.
+-   A copy must be built for the host's platform, so the client's own binary
+    serves only hosts of the client's platform. The client could download the
+    host's binary from a GitHub release and send it. That needs CI to publish
+    releases, an HTTPS client in `mush` (ureq over quinn's rustls adds six
+    crates), and a choice for development builds, which have no release and
+    whose protocol the latest release may not speak. Having the remote host
+    download its own copy instead trusts that host's network, where a proxy
+    that intercepts TLS could substitute a binary, and fails on hosts with no
+    internet access.
+-   Checking a downloaded copy against its release's `SHA256SUMS` catches
+    corruption, but not a tampered release or a proxy on the client's network
+    that intercepts TLS. CI could sign each `SHA256SUMS` with a key held as a
+    repository secret, and every build could carry the public key, at the cost
+    of managing the key. Carrying the checksums themselves would take two builds
+    per release, since no binary can hold its own checksum.
+-   A destination's first copy, about 8 MiB, would upload while the outer ssh
+    waits for the server's banner, so `ConnectTimeout` bounds it. A copy cut
+    short would start over on the next session unless partial copies were kept.
