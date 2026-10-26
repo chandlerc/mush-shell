@@ -148,6 +148,24 @@ pub async fn establish(
   transport: TransportOptions,
 ) -> anyhow::Result<(ClientSession<DuplexStream>, ServerSession<DuplexStream>)>
 {
+  let server_ip = addr(SERVER_ADDR).ip();
+  establish_racing(net, seed, transport, server_ip, Vec::new(), Vec::new())
+    .await
+}
+
+/// [`establish`] with the candidates spelled out. The server, listening
+/// at [`SERVER_ADDR`], hints `reached`, where `$SSH_CONNECTION` says the
+/// client's ssh arrived, and then `interface_ips`. The client adds its own
+/// `resolved_ips`.
+pub async fn establish_racing(
+  net: &SimNet,
+  seed: u64,
+  transport: TransportOptions,
+  reached: IpAddr,
+  interface_ips: Vec<IpAddr>,
+  resolved_ips: Vec<IpAddr>,
+) -> anyhow::Result<(ClientSession<DuplexStream>, ServerSession<DuplexStream>)>
+{
   let server_endpoint =
     sim_endpoint(net, addr(SERVER_ADDR), derive_u64(seed, "server"));
   let client_endpoint =
@@ -157,7 +175,8 @@ pub async fn establish(
     server_io,
     ServerOptions {
       endpoint: server::EndpointSource::Endpoint(server_endpoint),
-      ssh_connection: Some("10.0.0.1 41000 10.0.0.2 22".into()),
+      ssh_connection: Some(format!("{CLIENT_IP} 41000 {reached} 22")),
+      interface_ips,
       ..ServerOptions::default()
     },
   ));
@@ -169,6 +188,7 @@ pub async fn establish(
         endpoint: client::EndpointSource::Endpoint(client_endpoint),
         transport,
         establish_timeout: Duration::from_secs(30),
+        resolved_ips,
         ..ClientOptions::default()
       },
     ),

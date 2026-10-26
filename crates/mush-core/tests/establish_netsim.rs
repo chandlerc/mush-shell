@@ -20,15 +20,17 @@
 
 mod common;
 
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use common::netsim::{
   DEADLINE, SERVER_ADDR, addr, client_addr, client_ip, establish,
+  establish_racing,
 };
 use common::payload;
+use mush_core::client::DIAL_STAGGER;
 use mush_core::transport::TransportOptions;
-use mush_netsim::{LinkConfig, NatGrade, SimNet};
+use mush_netsim::{EventKind, LinkConfig, NatGrade, SimNet};
 use tokio::time::timeout;
 
 /// The one link in the suite with both loss and jitter: a handshake is
@@ -64,6 +66,81 @@ async fn establishment_across_lossy_simulated_link() -> anyhow::Result<()> {
   server.send.finish()?;
   let got = timeout(DEADLINE, client.recv.read_to_end(1024)).await??;
   assert_eq!(got, b"and back");
+  Ok(())
+}
+
+/// Where the races below hint a black hole: no socket is bound there, so
+/// the simulated network drops what the client sends without a reply.
+const SILENT_IP: &str = "10.0.0.3";
+
+/// The virtual time of the first datagram the client sent to `dst`.
+fn first_sent_to(net: &SimNet, dst: SocketAddr) -> anyhow::Result<Duration> {
+  net
+    .trace()
+    .into_iter()
+    .find_map(|event| match event.kind {
+      EventKind::Sent { dst: sent_to, .. } if sent_to == dst => Some(event.at),
+      _ => None,
+    })
+    .ok_or_else(|| anyhow::anyhow!("nothing was sent to {dst}"))
+}
+
+/// Candidate racing with stagger: the first hint is a black hole, the
+/// second is the client's own resolution where the real server is, and
+/// establishment succeeds on it, dialed one stagger after the first.
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn stagger_racing_wins_on_second_candidate() -> anyhow::Result<()> {
+  let seed = 0x6d75_7368; // "mush"
+  let net = SimNet::new(seed);
+  let server_addr = addr(SERVER_ADDR);
+  let silent = SocketAddr::new(SILENT_IP.parse()?, server_addr.port());
+  let (client, server) = establish_racing(
+    &net,
+    seed,
+    TransportOptions::default(),
+    silent.ip(),
+    Vec::new(),
+    vec![server_addr.ip()],
+  )
+  .await?;
+  assert_eq!(client.chosen_addr, server_addr);
+  assert_eq!(server.client_addr, client_addr());
+  assert_eq!(
+    first_sent_to(&net, server_addr)?,
+    first_sent_to(&net, silent)? + DIAL_STAGGER,
+    "the winning dial starts one stagger after the silent one"
+  );
+  Ok(())
+}
+
+/// The server's gathered candidates, raced (the design's Phase A): the
+/// `$SSH_CONNECTION` address leads and is a black hole, and the interface
+/// address behind it is where the server actually listens. The client
+/// resolves nothing itself, so it can only win on the gathered hint --
+/// the case a destination whose ssh runs through a jump depends on.
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn interface_hints_win_when_the_reached_address_is_silent()
+-> anyhow::Result<()> {
+  let seed = 0x6d75_7368; // "mush"
+  let net = SimNet::new(seed);
+  let server_addr = addr(SERVER_ADDR);
+  let silent = SocketAddr::new(SILENT_IP.parse()?, server_addr.port());
+  let (client, server) = establish_racing(
+    &net,
+    seed,
+    TransportOptions::default(),
+    silent.ip(),
+    vec![server_addr.ip()],
+    Vec::new(),
+  )
+  .await?;
+  assert_eq!(client.connect.addr_hints, vec![silent, server_addr]);
+  assert_eq!(client.chosen_addr, server_addr);
+  assert_eq!(server.client_addr, client_addr());
+  assert!(
+    first_sent_to(&net, silent)? < first_sent_to(&net, server_addr)?,
+    "the reached address leads the race"
+  );
   Ok(())
 }
 

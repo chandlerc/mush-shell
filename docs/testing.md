@@ -93,8 +93,8 @@ In-process and loopback tests, run by `cargo nextest run`:
 
 | Test                                    | Covers                                                                                                  |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `mush-core/tests/establish.rs`          | Establishment over loopback: login output, scan budgets, candidate racing, pin refusal                  |
-| `mush-core/tests/establish_netsim.rs`   | Establishment over an impaired simulated link, and replay determinism                                   |
+| `mush-core/tests/establish.rs`          | Establishment over loopback: login output, scan budgets, the establishment deadline, pin refusal        |
+| `mush-core/tests/establish_netsim.rs`   | Establishment over an impaired simulated link, candidate racing, and replay determinism                 |
 | `mush-core/tests/handshake.rs`          | Pinning verifiers: correct pins connect, and every wrong or missing credential is refused               |
 | `mush-core/tests/signaling.rs`          | Candidate, helper, and punch signaling in both directions                                               |
 | `mush-core/tests/relay.rs`              | The relay: bulk transfer, half-close, and each abort outcome                                            |

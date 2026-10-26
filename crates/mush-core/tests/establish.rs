@@ -7,8 +7,6 @@
 
 mod common;
 
-use std::net::IpAddr;
-use std::sync::Arc;
 use std::time::Duration;
 
 use common::{DEADLINE, addr, ip, read_line, server_options};
@@ -17,7 +15,7 @@ use mush_core::bootstrap::{
   SessionNonce, SessionSecret,
 };
 use mush_core::client::{
-  self, ClientOptions, ClientSession, DIAL_STAGGER, EstablishError, Traversal,
+  self, ClientOptions, ClientSession, EstablishError, Traversal,
 };
 use mush_core::path::ClientPlan;
 use mush_core::pinning::{self, KeyPin, SessionIdentity};
@@ -36,30 +34,6 @@ fn client_options() -> ClientOptions {
     endpoint: client::EndpointSource::Bind(addr("127.0.0.1:0")),
     ..ClientOptions::default()
   }
-}
-
-/// Binds the same UDP port on two loopback addresses: the real server on
-/// one, a black hole on the other, which is how the candidate-racing
-/// scenarios give a hint an address that answers nothing.
-///
-/// The retry is what this function is for. Ephemeral ports are per bind
-/// address, so a port free on `real` says nothing about `decoy`: a
-/// concurrent test holding it there fails the second bind with
-/// `EADDRINUSE`, worth about one failure per twenty workspace runs at
-/// this suite's parallel peak of around 145 UDP sockets. The cap only
-/// stops a stuck machine spinning.
-fn bind_with_decoy(
-  real: &str,
-  decoy: &str,
-) -> anyhow::Result<(std::net::UdpSocket, std::net::UdpSocket, u16)> {
-  for _ in 0..64 {
-    let socket = std::net::UdpSocket::bind((real, 0))?;
-    let port = socket.local_addr()?.port();
-    if let Ok(decoy) = std::net::UdpSocket::bind((decoy, port)) {
-      return Ok((socket, decoy, port));
-    }
-  }
-  anyhow::bail!("no port free on both {real} and {decoy}")
 }
 
 /// Reads the `MUSH CONNECT` line from a raw channel, for tests driving
@@ -331,96 +305,6 @@ async fn unpinned_client_is_refused_and_server_times_out() -> anyhow::Result<()>
     matches!(result, Err(RunError::BootstrapTimeout { .. })),
     "server should time out, got: {result:?}"
   );
-  Ok(())
-}
-
-/// Runs one candidate race on the loopback pair `bind_with_decoy` builds: the
-/// server listens on `real` while `decoy` holds the same port open and
-/// answers nothing. `decoy` is also where the "ssh session" arrived, so it
-/// heads the hints via `$SSH_CONNECTION`; `interface_ips` supplies any
-/// hint behind it. Hands back both ends and the port they share.
-async fn race(
-  real: &str,
-  decoy: &str,
-  interface_ips: Vec<IpAddr>,
-  resolved_ips: Vec<IpAddr>,
-) -> anyhow::Result<(
-  ClientSession<tokio::io::DuplexStream>,
-  ServerSession<tokio::io::DuplexStream>,
-  u16,
-)> {
-  let (server_socket, _decoy, port) = bind_with_decoy(real, decoy)?;
-  let server_endpoint = quinn::Endpoint::new(
-    quinn::EndpointConfig::default(),
-    None,
-    server_socket,
-    Arc::new(quinn::TokioRuntime),
-  )?;
-
-  let (client_io, server_io) = tokio::io::duplex(64 * 1024);
-  let server_task = tokio::spawn(ServerSession::run(
-    server_io,
-    ServerOptions {
-      endpoint: server::EndpointSource::Endpoint(server_endpoint),
-      ssh_connection: Some(format!("198.51.100.7 40000 {decoy} 22")),
-      interface_ips,
-      ..ServerOptions::default()
-    },
-  ));
-
-  let mut client = timeout(
-    DEADLINE,
-    ClientSession::establish(
-      client_io,
-      ClientOptions {
-        resolved_ips,
-        ..client_options()
-      },
-    ),
-  )
-  .await??;
-  // The server surfaces the session on the client's first stream bytes.
-  client.send.write_all(b"x").await?;
-  client.send.finish()?;
-  let server = timeout(DEADLINE, server_task).await???;
-  assert_eq!(server.client_addr, client.endpoint.local_addr()?);
-  Ok((client, server, port))
-}
-
-/// Candidate racing with stagger: the first hint is a black hole, the
-/// second is the client's own resolution where the real server is, and
-/// establishment succeeds on it after the stagger.
-#[tokio::test]
-async fn stagger_racing_wins_on_second_candidate() -> anyhow::Result<()> {
-  let started = std::time::Instant::now();
-  let (client, _server, port) =
-    race("127.0.0.1", "127.0.0.2", Vec::new(), vec![ip("127.0.0.1")]).await?;
-  assert_eq!(client.chosen_addr, addr(&format!("127.0.0.1:{port}")));
-  assert!(
-    started.elapsed() >= DIAL_STAGGER,
-    "the winning dial cannot have started before the stagger"
-  );
-  Ok(())
-}
-
-/// The server's gathered candidates, raced (the design's Phase A): the
-/// `$SSH_CONNECTION` address leads and is a black hole, and the interface
-/// address behind it is where the server actually listens. The client
-/// resolves nothing itself, so it can only win on the gathered hint --
-/// the case a destination whose ssh runs through a jump depends on.
-#[tokio::test]
-async fn interface_hints_win_when_the_reached_address_is_silent()
--> anyhow::Result<()> {
-  let (client, _server, port) =
-    race("127.0.0.2", "127.0.0.1", vec![ip("127.0.0.2")], Vec::new()).await?;
-  assert_eq!(
-    client.connect.addr_hints,
-    vec![
-      addr(&format!("127.0.0.1:{port}")),
-      addr(&format!("127.0.0.2:{port}"))
-    ]
-  );
-  assert_eq!(client.chosen_addr, addr(&format!("127.0.0.2:{port}")));
   Ok(())
 }
 
