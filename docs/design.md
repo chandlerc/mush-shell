@@ -58,7 +58,7 @@ outages, routing changes, and client address changes.
 
 -   Drop-in for `ssh`: shells, exec, `-L`/`-R`/`-D` and UNIX-socket forwarding,
     agent forwarding, sftp, scp, and tools that run `ssh`, configurable through
-    `ssh_config` with no wrapper.
+    `~/.ssh/config` with no wrapper.
 -   Sessions survive packet loss, long outages, NAT rebinding, and client
     address changes, and recover promptly.
 -   Jump hosts work as with `ssh -J`, while session traffic takes the most
@@ -122,14 +122,15 @@ no listeners that outlive a session, and no state files.
 ### Session lifecycle
 
 Bootstrap. The client generates an ephemeral keypair and runs real `ssh` to
-execute `mush server bootstrap` on the destination. It sends a `MUSH HELLO`
-line with the protocol version, its key hash, the target sshd port, and, if it
-will signal later, a session nonce. This ssh authenticates however the user's
-ssh does for that host. It runs with `-T -a -x -o ClearAllForwardings=yes` and
-`-o ControlMaster=no`, so it reuses a mux master but never creates one. Without
-a jump it also sets `-o ProxyCommand=none` so it does not recurse into Mush;
-with a jump, `-J` takes ssh's proxy slot instead, since ssh rejects `-J` after a
-command-line `ProxyCommand`.
+execute `mush server bootstrap` on the destination. It sends a `MUSH HELLO` line
+with the protocol version, its key hash, the target sshd port, and, if it will
+signal later, a session nonce. This ssh authenticates however the user's ssh
+does for that host. It runs with `-T -a -x -o ClearAllForwardings=yes` and
+`-o ControlPath=none`, sharing no connection, since the session's ssh runs the
+`ProxyCommand` only when it shares none. Without a jump it also sets
+`-o ProxyCommand=none` so it does not recurse into Mush; with a jump, `-J` takes
+ssh's proxy slot instead, since ssh rejects `-J` after a command-line
+`ProxyCommand`.
 
 Server start. The server generates its own keypair, binds a UDP port in Mosh's
 range, and prints:
@@ -301,7 +302,7 @@ machinery only proposes paths; the pinned handshake decides whether one is used.
 
 ### Bootstrap through the jump
 
-A `ProxyJump` in ssh_config applies to the bootstrap ssh, and the wrapper
+A `ProxyJump` in `~/.ssh/config` applies to the bootstrap ssh, and the wrapper
 forwards `-J`. ssh rejects `ProxyJump` together with `ProxyCommand`, so pure
 `ProxyCommand` configurations give the jump to Mush:
 
@@ -464,7 +465,7 @@ this against a real NAT matrix.
 
 ### Invocation modes
 
-`ssh_config` with `ProxyCommand mush connect %r %h %p` is the primary
+`~/.ssh/config` with `ProxyCommand mush connect %r %h %p` is the primary
 interface. The `mush [ssh args] destination [command]` wrapper adds the
 `ProxyCommand`, runs real ssh with the other arguments unchanged, and forwards
 `-i`, `-J`, and `-o` to the bootstrap ssh. For hosts where `mush` is not on the
@@ -491,15 +492,19 @@ claim is parity. X11, UNIX-socket forwarding, and `~` escapes are untested.
     user gives up or an opt-in limit trips: `--idle-timeout` on the client,
     `--retain` on the server.
 -   Pure `ProxyCommand` mode passes only `%r`, `%h`, and `%p` to the bootstrap
-    ssh. Hosts that need flags such as `-i` need them in ssh_config, through the
-    wrapper, or in `--ssh`.
+    ssh. Hosts that need flags such as `-i` need them in `~/.ssh/config`,
+    through the wrapper, or in `--ssh`.
 -   A cold connection authenticates twice, for bootstrap and for the tunneled
     session: two signatures with key authentication, or two prompts with a
-    password or 2FA, unless a mux master exists. Granting server-side
-    authorization to skip the second is rejected for the security surface it
-    adds, and a persistent server, the other way to avoid it, is not planned.
+    password or 2FA. A session that joins a master authenticates nothing.
+    Granting server-side authorization to skip the second is rejected for the
+    security surface it adds, and a persistent server, the other way to avoid
+    it, is not planned.
 -   An existing plain-TCP ControlMaster for the same host silently bypasses
     `ProxyCommand`. Give Mush hosts their own `ControlPath`.
+-   A master whose session fell back to TCP carries every session that joins it
+    over TCP until the master exits, even after a move to a network where UDP
+    works. `--no-fallback` makes the fallback an error instead.
 -   A server behind port-forwarding NAT with no jump host needs the UDP range
     forwarded. A remapped ssh port needs
     `--server 'mush server bootstrap --target 22'`; without it, the server

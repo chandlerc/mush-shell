@@ -58,7 +58,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
   /// ProxyCommand mode: carry ssh's transport bytes over the Mush tunnel.
-  /// Intended as `ProxyCommand mush connect %r %h %p` in ssh_config.
+  /// Intended as `ProxyCommand mush connect %r %h %p` in `~/.ssh/config`.
   #[command(after_help = "\
 The wrapper mode (`mush [ssh args] destination`) forwards a fixed set of \
 outer ssh flags (-i -J -o) to the bootstrap ssh through the \

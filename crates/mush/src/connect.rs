@@ -1279,7 +1279,8 @@ async fn stun_servers(server: Option<&str>) -> Vec<SocketAddr> {
 
 /// Builds the bootstrap ssh argv per the design's "Session lifecycle":
 /// the hygiene of [`side_ssh_options`], plus prevented ProxyCommand
-/// recursion and the destination's own port and user.
+/// recursion, no control socket, and the destination's own port and
+/// user.
 ///
 /// Ordering matters: ssh takes the first occurrence of an option
 /// (verified on OpenSSH 10.5: `ssh -G -p 111 -p 222` resolves port 111,
@@ -1321,6 +1322,9 @@ fn bootstrap_ssh_argv(
   if !(options.jump.is_some() || forwarded_jump(&env_args).is_some()) {
     argv.extend(["-o", "ProxyCommand=none"].map(OsString::from));
   }
+  // The session's ssh runs this ProxyCommand only when it shares no
+  // connection, so its bootstrap shares none either.
+  argv.extend(["-o", "ControlPath=none"].map(OsString::from));
   argv.extend(side_ssh_options());
   argv.push("-p".into());
   argv.push(options.port.to_string().into());
@@ -1628,6 +1632,8 @@ mod tests {
         "-o",
         "ProxyCommand=none",
         "-o",
+        "ControlPath=none",
+        "-o",
         "ControlMaster=no",
         "-T",
         "-a",
@@ -1643,6 +1649,31 @@ mod tests {
         "mush server bootstrap",
       ])
     );
+  }
+
+  #[test]
+  fn the_bootstrap_shares_no_control_socket() {
+    // Ahead of anything forwarded, jump or no jump, since ssh takes the
+    // first value it sees.
+    for jump in [None, Some("bastion".to_string())] {
+      let argv = bootstrap_ssh_argv(
+        &Options {
+          jump: jump.clone(),
+          ..options()
+        },
+        os(&["-o", "ControlPath=/tmp/x"]),
+      )
+      .unwrap();
+      let none = argv
+        .windows(2)
+        .position(|pair| pair == os(&["-o", "ControlPath=none"]))
+        .unwrap_or_else(|| panic!("with jump {jump:?}: {argv:?}"));
+      let forwarded = argv
+        .iter()
+        .position(|arg| arg == "ControlPath=/tmp/x")
+        .unwrap();
+      assert!(none < forwarded, "with jump {jump:?}: {argv:?}");
+    }
   }
 
   #[test]
@@ -1702,6 +1733,8 @@ mod tests {
         "ssh",
         "-J",
         "bastion",
+        "-o",
+        "ControlPath=none",
         "-o",
         "ControlMaster=no",
         "-T",

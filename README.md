@@ -67,7 +67,7 @@ If `mush` is not on a remote host's non-interactive `PATH`, name it with
 
 To try Mush, run `mush` where you would run `ssh`. It takes ssh's arguments,
 adds a `ProxyCommand` that carries the connection over Mush, and runs the real
-`ssh`, with no change to your `ssh_config`:
+`ssh`, with no change to your `~/.ssh/config`:
 
 ```sh
 mush user@host
@@ -75,13 +75,22 @@ mush user@host uptime
 mush -J bastion user@host
 ```
 
-To use Mush for `ssh` and every tool that runs it, such as git and rsync, add
-the `ProxyCommand` to `ssh_config` instead:
+To use Mush for `ssh` and every tool that runs it, such as git and rsync, add a
+block for its hosts to `~/.ssh/config`. Put it above any `Host *` block, since
+ssh uses the first value it finds for each option:
 
 ```text
 Host dev-*
   ProxyCommand mush connect %r %h %p
+  ControlMaster auto
+  ControlPath ~/.ssh/mush-%C
+  ControlPersist 10m
 ```
+
+The `Control` lines let later sessions to a host share the first one's Mush
+connection without logging in again. Plain `ssh` must not use that
+`ControlPath`: ssh hands a session to any master listening there without running
+the `ProxyCommand`, so a plain master would carry it over TCP.
 
 ssh does not allow `ProxyJump` with `ProxyCommand`, so give the jump host to
 Mush instead: `ProxyCommand mush connect -J bastion %r %h %p`.
