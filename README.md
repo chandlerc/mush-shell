@@ -65,8 +65,18 @@ If `mush` is not on a remote host's non-interactive `PATH`, name it with
 
 ## Usage
 
-With a `ProxyCommand` in `ssh_config`, `ssh` and every tool that runs it use
-Mush:
+To try Mush, run `mush` where you would run `ssh`. It takes ssh's arguments,
+adds a `ProxyCommand` that carries the connection over Mush, and runs the real
+`ssh`, with no change to your `ssh_config`:
+
+```sh
+mush user@host
+mush user@host uptime
+mush -J bastion user@host
+```
+
+To use Mush for `ssh` and every tool that runs it, such as git and rsync, add
+the `ProxyCommand` to `ssh_config` instead:
 
 ```text
 Host dev-*
@@ -74,13 +84,7 @@ Host dev-*
 ```
 
 ssh does not allow `ProxyJump` with `ProxyCommand`, so give the jump host to
-Mush instead: `ProxyCommand mush connect -J bastion %r %h %p`. For one-off use,
-the wrapper adds the `ProxyCommand` and runs `ssh` with your arguments:
-
-```sh
-mush user@host
-mush -J bastion user@host
-```
+Mush instead: `ProxyCommand mush connect -J bastion %r %h %p`.
 
 The destination, and any bastion running the helper, needs a UDP port in
 60000-61000 reachable from the client. Sessions wait for a lost peer
